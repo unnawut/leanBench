@@ -696,6 +696,13 @@ select.filter-machine:hover { border-color: var(--accent); }
   margin: 4px 0 14px;
   max-width: 60ch;
 }
+.section-note-pin {
+  font-variant-numeric: tabular-nums;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  opacity: 0.85;
+  white-space: nowrap;
+}
 
 /* Compare section — grid of per-workload charts, grouped by category */
 .compare-group { margin-bottom: 24px; }

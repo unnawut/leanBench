@@ -45,6 +45,12 @@
       <p class="section-note">One chart per headline workload — y-axis is wall-clock mean on the chosen machine, points are individual commits plotted at first-bench timestamp (proxy for when the SHA landed on the branch). Use the leanVM branch filter to scope to a single branch's progress.</p>
       <div id="branch-trend-grid"></div>
     </section>
+
+    <section id="deep-recursion-section">
+      <h2>Deep recursion</h2>
+      <p class="section-note">Aggregation-strategy comparison for 1000 signatures, across machines: 2-level trees (8×125, 2×500) vs 3-level recursion (2×2×250, 2×4×125, 4×2×125). Total wall-clock — lower is the cheaper strategy. <span id="deep-recursion-pin" class="section-note-pin"></span></p>
+      <div id="deep-recursion-grid" class="compare-group-grid"></div>
+    </section>
   </main>
 
   <footer>

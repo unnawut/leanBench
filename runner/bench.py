@@ -31,8 +31,8 @@ ROOT = HERE.parent
 
 @dataclass(frozen=True)
 class Workload:
-    # argv passed to the Rust binary; aggregates take positional `n` (flat)
-    # or `fan n` (tree).
+    # argv passed to the Rust binary; aggregates take positional `n` (flat),
+    # `fan n` (tree), or `root_fan mid_fan n` (deep).
     cli_args: list[str]
     # workload identifier emitted in the JSON record (`workload` field).
     name: str
@@ -58,6 +58,19 @@ ALL_WORKLOADS: list[Workload] = [
     Workload(["aggregate-tree", "8", "125"], "aggregate.tree_8x125_r2", in_default_set=True, samples_override=5),
     Workload(["aggregate-tree", "8", "250"], "aggregate.tree_8x250_r2", in_default_set=True, samples_override=5),
     Workload(["aggregate-tree", "8", "500"], "aggregate.tree_8x500_r2", in_default_set=True, samples_override=5),
+    # Deep (3-level) recursion: root_fan x mid_fan x leaf_n. Probes aggregate-fast-
+    # aggregate-often vs the wide 2-level tree above. samples_override scales down
+    # with cost — the heaviest (4x5x500 = 10k sigs) runs at ~2 min/sample even on
+    # an 8-core VM, so it gets n=3; the 4x4x* pair and 2x2x500 get n=5.
+    Workload(["aggregate-deep", "2", "2", "125"], "aggregate.deep_2x2x125_r2", in_default_set=True),
+    Workload(["aggregate-deep", "2", "2", "250"], "aggregate.deep_2x2x250_r2", in_default_set=True),
+    Workload(["aggregate-deep", "2", "2", "500"], "aggregate.deep_2x2x500_r2", in_default_set=True, samples_override=5),
+    Workload(["aggregate-deep", "4", "4", "125"], "aggregate.deep_4x4x125_r2", in_default_set=True, samples_override=5),
+    Workload(["aggregate-deep", "4", "4", "250"], "aggregate.deep_4x4x250_r2", in_default_set=True, samples_override=5),
+    Workload(["aggregate-deep", "4", "5", "500"], "aggregate.deep_4x5x500_r2", in_default_set=True, samples_override=3),
+    # 2x4 vs 4x2 (both 1000 sigs): does fanning wide at the root or at the mid tier win?
+    Workload(["aggregate-deep", "2", "4", "125"], "aggregate.deep_2x4x125_r2", in_default_set=True),
+    Workload(["aggregate-deep", "4", "2", "125"], "aggregate.deep_4x2x125_r2", in_default_set=True),
     # split / merge_many strategies on parent type-2 (K x N at LOG_INV_RATE_PROD=2).
     # Heavier than flat/tree because every iteration rebuilds the parent type-2;
     # samples_override=5 on the merge / strategy variants keeps the budget bounded.

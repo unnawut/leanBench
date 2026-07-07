@@ -131,6 +131,46 @@ pub mod aggregate {
         ))
     }
 
+    /// Three-level recursion: root combines `root_fan` mid-nodes, each mid-node
+    /// combines `mid_fan` `n`-sig leaves, all at LOG_INV_RATE_PROD=2. Total raw
+    /// signatures = root_fan × mid_fan × n. Probes the aggregate-fast-aggregate-often
+    /// regime (deep recursion) against the wide 2-level `tree_*` runner.
+    pub fn deep_r2(args: &CommonArgs, root_fan: usize, mid_fan: usize, n: usize) -> Result<Record> {
+        let leaf = AggregationTopology { raw_xmss: n, children: vec![], log_inv_rate: 2, overlap: 0 };
+        let mid = AggregationTopology {
+            raw_xmss: 0,
+            children: vec![leaf; mid_fan],
+            log_inv_rate: 2,
+            overlap: 0,
+        };
+        let topology = AggregationTopology {
+            raw_xmss: 0,
+            children: vec![mid; root_fan],
+            log_inv_rate: 2,
+            overlap: 0,
+        };
+        let (samples, proof_sizes, reports) = run_loop(args, &topology);
+        let (root_kib, leaf_kib) = root_and_leaf_kib(&proof_sizes);
+        Ok(make_record(
+            &format!("aggregate.deep_{root_fan}x{mid_fan}x{n}_r2"),
+            samples,
+            args.warmup,
+            serde_json::json!({
+                "leaf_raw_xmss": n,
+                "root_fan_in": root_fan,
+                "mid_fan_in": mid_fan,
+                "total_raw_xmss": root_fan * mid_fan * n,
+                "log_inv_rate": 2,
+                "topology": format!("{root_fan}-to-1 over {mid_fan}-to-1 recursion"),
+                "proof_kib_root": root_kib,
+                "proof_kib_leaf": leaf_kib,
+                "proof_kib_by_path": proof_sizes,
+                "reports": reports,
+                "note": "per-node cost is each node's `time_secs` in reports: root is path=[], mids are path=[i], leaves are path=[i,j]",
+            }),
+        ))
+    }
+
     // split / merge_split_* runners exist only on devnet5 (api-leansig with a
     // devnet5 pin) — both devnet4 and main expose only run_aggregation_benchmark.
     // Stubbed here so the runner binary compiles regardless of which pin is in

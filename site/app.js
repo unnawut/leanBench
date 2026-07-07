@@ -481,6 +481,7 @@ function renderCompare(container, workloadNames, machines) {
     if (head === "aggregate") {
       if (second.startsWith("flat_"))       key = "aggregate.flat";
       else if (second.startsWith("tree_"))  key = "aggregate.tree";
+      else if (second.startsWith("deep_"))  key = "aggregate.deep";
       else if (second.startsWith("split_")) key = "aggregate.split";
       else if (second.startsWith("merge_")) key = "aggregate.merge";
       else                                  key = "aggregate.other";
@@ -493,7 +494,7 @@ function renderCompare(container, workloadNames, machines) {
 
   const preferredOrder = [
     "leansig",
-    "aggregate.flat", "aggregate.tree", "aggregate.split", "aggregate.merge",
+    "aggregate.flat", "aggregate.tree", "aggregate.deep", "aggregate.split", "aggregate.merge",
   ];
   const keys = [
     ...preferredOrder.filter((k) => grouped[k]),
@@ -506,6 +507,7 @@ function renderCompare(container, workloadNames, machines) {
     leansig:             "leanSig",
     "aggregate.flat":    "leanVM.flat",
     "aggregate.tree":    "leanVM.tree",
+    "aggregate.deep":    "Deep recursion",
     "aggregate.split":   "leanVM.split",
     "aggregate.merge":   "leanVM.merge",
     "aggregate.other":   "leanVM.other",
@@ -532,11 +534,19 @@ function renderCompare(container, workloadNames, machines) {
         for (const wl of grouped[group]) grid.appendChild(buildCompareCard(wl, machines));
         section.appendChild(grid);
       }
-    } else if (group !== "aggregate.tree") {
+    } else if (group !== "aggregate.tree" && group !== "aggregate.deep") {
       const grid = el("div", { class: "compare-group-grid" });
       for (const wl of grouped[group]) {
         grid.appendChild(buildCompareCard(wl, machines));
       }
+      section.appendChild(grid);
+    }
+    if (group === "aggregate.deep") {
+      section.appendChild(el("p", { class: "compare-group-note" },
+        "Aggregation-strategy comparison for 1000 signatures: 2-level trees (8×125, 2×500) vs 3-level recursion (2×2×250, 2×4×125, 4×2×125). Total wall-clock per machine — lower is the cheaper strategy.",
+      ));
+      const grid = el("div", { class: "compare-group-grid" });
+      appendDeepCharts(grid, machines);
       section.appendChild(grid);
     }
     if (group === "aggregate.tree") {
@@ -764,6 +774,83 @@ function appendRecursionCrossSection(section, treeWorkloads, machines, varies) {
   }
   section.appendChild(el("h4", { class: "compare-subgroup-head", text: headingText }));
   section.appendChild(grid);
+}
+
+// ---- Deep-recursion charts (shared by the run page's "Deep recursion"
+// group and the index page's "leanVM deep recursion" section). Every chart
+// compares machines as separate series, matching the across-machines format
+// used elsewhere on the run page.
+
+// Parse `aggregate.deep_<root>x<mid>x<leaf>_r2` names into topology descriptors,
+// sorted naturally so equal-size variants (2×4×125 / 4×2×125) sit adjacent.
+// Curated aggregation-strategy comparison: a fixed set of topologies that all
+// aggregate the same 1000 raw XMSS signatures, spanning 2-level trees and
+// 3-level deep recursion. Order is meaningful and preserved on the x-axis.
+const DEEP_TOPOLOGIES = [
+  { name: "aggregate.tree_8x125_r2",   label: "8×125",   sigs: 1000, levels: 2 },
+  { name: "aggregate.tree_2x500_r2",   label: "2×500",   sigs: 1000, levels: 2 },
+  { name: "aggregate.deep_2x2x250_r2", label: "2×2×250", sigs: 1000, levels: 3 },
+  { name: "aggregate.deep_2x4x125_r2", label: "2×4×125", sigs: 1000, levels: 3 },
+  { name: "aggregate.deep_4x2x125_r2", label: "4×2×125", sigs: 1000, levels: 3 },
+];
+
+// Grouped bar: x = instance type (machine), one bar series per topology
+// clustered within each instance. `valueMs(machine, row)` returns the metric
+// in ms (or null when the machine never benched that topology).
+function deepBarCard(rows, machines, title, valueMs, yLabel, fmt = (v) => v.toFixed(0)) {
+  const present = machines.filter((m) => rows.some((p) => valueMs(m, p) != null));
+  if (!present.length) return null;
+  const labels = present.map((m) => m.label);
+  const datasets = rows.map((p, i) => ({
+    label: p.label,
+    data: present.map((m) => valueMs(m, p)),
+    backgroundColor: colorFor(i),
+  }));
+
+  const card = el("div", { class: "compare-card" });
+  card.appendChild(el("h3", { text: title }));
+  const wrap = el("div", { class: "compare-card-chart" });
+  const canvas = el("canvas");
+  wrap.appendChild(canvas);
+  card.appendChild(wrap);
+
+  queueMicrotask(() => {
+    new Chart(canvas.getContext("2d"), {
+      type: "bar",
+      data: { labels, datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: true, position: "bottom", labels: { boxWidth: 12, padding: 8, font: { size: 11 } } },
+          tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${fmt(ctx.parsed.y)} ${yLabel}` } },
+        },
+        scales: {
+          x: { title: { display: true, text: "instance type" } },
+          y: { type: yAxisType(), title: { display: true, text: yLabel }, beginAtZero: !useLogScale },
+        },
+      },
+    });
+  });
+  return card;
+}
+
+// Build the curated comparison into `grid`. Returns true if anything was
+// appended (callers hide the section header when not). Pulls from the full
+// per-machine run data, so it spans both tree (2-level) and deep (3-level)
+// workloads regardless of how the run page groups them.
+function appendDeepCharts(grid, machines) {
+  const totalMs = (mach, row) => {
+    const ns = bestMeanNs(mach, row.name);
+    return ns == null ? null : ns / 1e6;
+  };
+
+  // All entries aggregate the same 1000 signatures, so total wall-clock is the
+  // direct strategy comparison — no per-signature normalization needed.
+  const card = deepBarCard(DEEP_TOPOLOGIES, machines, "total time by topology", totalMs, "ms");
+  if (!card) return false;
+  grid.appendChild(card);
+  return true;
 }
 
 // Proof-size section — one row per aggregate workload, showing root /
@@ -1442,8 +1529,43 @@ async function renderIndex() {
 
   setupIndexBranchFilter(combos, machines);
   setupIndexMachineSelector(machines, combos);
-  wireLogToggle(() => recomputeBranchTrends(machines, combos));
+  wireLogToggle(() => {
+    recomputeBranchTrends(machines, combos);
+    renderDeepRecursionSection(machines, combos);
+  });
   recomputeBranchTrends(machines, combos);
+  renderDeepRecursionSection(machines, combos);
+}
+
+// Index-page "Deep recursion" section: the same across-machines comparison as
+// the run page. The curated set mixes tree (2-level) and deep (3-level)
+// workloads, so it's only valid within a single leanVM pin — pick the most
+// recent combo that actually has the deep workloads benched, scope every
+// machine's runs to it, and label the section with that pin. Hidden when no
+// deep run exists yet.
+function renderDeepRecursionSection(machines, combos) {
+  const section = document.querySelector("#deep-recursion-section");
+  const grid = document.querySelector("#deep-recursion-grid");
+  if (!section || !grid) return;
+  grid.innerHTML = "";
+
+  const deepNames = new Set(DEEP_TOPOLOGIES.filter((t) => t.levels >= 3).map((t) => t.name));
+  const comboHasDeep = (combo) => machines.some((m) =>
+    (m.runs || []).some((r) => runMatchesCombo(r, combo)
+      && (r.workloads || []).some((w) => deepNames.has(w.name))));
+  const combo = [...(combos || [])]
+    .sort((a, b) => (b.latest_run_ts || "").localeCompare(a.latest_run_ts || ""))
+    .find(comboHasDeep);
+
+  const any = combo && appendDeepCharts(grid, filteredMachines(machines, combo));
+  section.style.display = any ? "" : "none";
+
+  const pinEl = document.querySelector("#deep-recursion-pin");
+  if (pinEl) {
+    pinEl.textContent = combo
+      ? `leanVM ${combo.leanmultisig_branch}@${(combo.leanmultisig_sha || "").slice(0, 8)}`
+      : "";
+  }
 }
 
 function setupIndexBranchFilter(combos, machines) {

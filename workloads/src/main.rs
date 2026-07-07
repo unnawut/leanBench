@@ -57,6 +57,19 @@ enum Cli {
         common: CommonArgs,
     },
 
+    #[command(name = "aggregate-deep",
+              about = "Aggregation: root_fan-to-1 over mid_fan-to-1 recursion over n-sig leaves at LOG_INV_RATE_PROD=2")]
+    AggregateDeep {
+        /// Fan-in at the root (combines this many mid-nodes).
+        root_fan: usize,
+        /// Fan-in at each mid-node (combines this many leaves).
+        mid_fan: usize,
+        /// Raw XMSS signatures per leaf.
+        n: usize,
+        #[command(flatten)]
+        common: CommonArgs,
+    },
+
     #[command(name = "split",
               about = "split_type_2 at index 0 of a K-component, N-per-component parent type-2 at LOG_INV_RATE_PROD=2")]
     Split {
@@ -122,6 +135,8 @@ fn main() -> Result<()> {
     let rec = match cli {
         Cli::AggregateFlat { n, common } => workloads::aggregate::flat_r2(&common, n),
         Cli::AggregateTree { fan, n, common } => workloads::aggregate::tree_r2(&common, fan, n),
+        Cli::AggregateDeep { root_fan, mid_fan, n, common } =>
+            workloads::aggregate::deep_r2(&common, root_fan, mid_fan, n),
         Cli::Split { per_component, n_components, common } =>
             workloads::aggregate::split_r2(&common, per_component, n_components),
         Cli::MergeSplitAndOriginal { per_component, n_components, common } =>
